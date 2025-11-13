@@ -17,7 +17,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/christopher/mcl/pkg/container"
+	"github.com/uprockcom/maestro/pkg/container"
 )
 
 // CachedState holds TUI state for seamless return

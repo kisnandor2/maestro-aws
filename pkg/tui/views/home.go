@@ -19,8 +19,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/christopher/mcl/pkg/container"
-	"github.com/christopher/mcl/pkg/tui/style"
+	"github.com/uprockcom/maestro/pkg/container"
+	"github.com/uprockcom/maestro/pkg/tui/style"
 )
 
 // HomeModel is the main container list view

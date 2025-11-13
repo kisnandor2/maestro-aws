@@ -17,7 +17,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/christopher/mcl/pkg/version"
+	"github.com/uprockcom/maestro/pkg/version"
 	"github.com/spf13/cobra"
 )
 

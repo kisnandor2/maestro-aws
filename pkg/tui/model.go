@@ -29,15 +29,15 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/christopher/mcl/pkg/paths"
+	"github.com/uprockcom/maestro/pkg/paths"
 	"github.com/mistakenelf/teacup/statusbar"
 	"github.com/spf13/viper"
 	"go.dalton.dog/bubbleup"
 
-	"github.com/christopher/mcl/pkg/container"
-	"github.com/christopher/mcl/pkg/system"
-	"github.com/christopher/mcl/pkg/tui/style"
-	"github.com/christopher/mcl/pkg/tui/views"
+	"github.com/uprockcom/maestro/pkg/container"
+	"github.com/uprockcom/maestro/pkg/system"
+	"github.com/uprockcom/maestro/pkg/tui/style"
+	"github.com/uprockcom/maestro/pkg/tui/views"
 )
 
 // Model is the main TUI model

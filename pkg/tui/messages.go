@@ -17,7 +17,7 @@ package tui
 import (
 	"time"
 
-	"github.com/christopher/mcl/pkg/container"
+	"github.com/uprockcom/maestro/pkg/container"
 )
 
 // tickMsg is sent on each animation tick (750ms for daemon pulsing)

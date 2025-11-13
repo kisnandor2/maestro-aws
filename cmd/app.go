@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/christopher/mcl/pkg/container"
+	"github.com/uprockcom/maestro/pkg/container"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

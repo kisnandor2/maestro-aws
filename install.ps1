@@ -65,7 +65,9 @@ try {
 }
 
 # Download binary
-$FileName = "maestro_${Version}_Windows_${Arch}.zip"
+# Strip 'v' prefix from version for filename (GoReleaser uses version without 'v')
+$VersionStripped = $Version -replace '^v', ''
+$FileName = "maestro_${VersionStripped}_Windows_${Arch}.zip"
 $DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$FileName"
 
 Write-Info "Downloading $FileName..."

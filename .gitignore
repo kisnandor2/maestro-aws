@@ -26,8 +26,11 @@ Thumbs.db
 # User config (don't commit personal settings)
 .mcl.yml
 
-# Planning documents (internal - ignore all markdown files in root)
+# Planning documents (internal - ignore markdown files except public docs)
 /*.md
+!README.md
+!GUIDE.md
+!LICENSE
 
 # Development references
 references/

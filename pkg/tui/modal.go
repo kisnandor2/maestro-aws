@@ -27,7 +27,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/christopher/mcl/pkg/tui/style"
+	"github.com/uprockcom/maestro/pkg/tui/style"
 )
 
 // ModalType defines the type of modal

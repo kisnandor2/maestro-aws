@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/christopher/mcl/pkg/paths"
+	"github.com/uprockcom/maestro/pkg/paths"
 )
 
 // OperationType defines Docker operations that can be performed on containers

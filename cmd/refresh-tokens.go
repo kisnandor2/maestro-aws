@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/christopher/mcl/pkg/container"
-	"github.com/christopher/mcl/pkg/paths"
+	"github.com/uprockcom/maestro/pkg/container"
+	"github.com/uprockcom/maestro/pkg/paths"
 	"github.com/spf13/cobra"
 )
 

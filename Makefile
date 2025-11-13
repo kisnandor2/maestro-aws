@@ -25,10 +25,10 @@ help:
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS := -X github.com/christopher/mcl/pkg/version.Version=$(VERSION) \
-           -X github.com/christopher/mcl/pkg/version.Commit=$(COMMIT) \
-           -X github.com/christopher/mcl/pkg/version.Date=$(DATE) \
-           -X github.com/christopher/mcl/pkg/version.BuiltBy=make
+LDFLAGS := -X github.com/uprockcom/maestro/pkg/version.Version=$(VERSION) \
+           -X github.com/uprockcom/maestro/pkg/version.Commit=$(COMMIT) \
+           -X github.com/uprockcom/maestro/pkg/version.Date=$(DATE) \
+           -X github.com/uprockcom/maestro/pkg/version.BuiltBy=make
 
 # Build the Go binary
 build:

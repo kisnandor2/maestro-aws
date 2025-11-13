@@ -25,8 +25,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/christopher/mcl/assets"
-	"github.com/christopher/mcl/pkg/daemon"
+	"github.com/uprockcom/maestro/assets"
+	"github.com/uprockcom/maestro/pkg/daemon"
 	"github.com/spf13/cobra"
 )
 

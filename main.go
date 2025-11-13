@@ -15,7 +15,7 @@
 package main
 
 import (
-	"github.com/christopher/mcl/cmd"
+	"github.com/uprockcom/maestro/cmd"
 )
 
 func main() {

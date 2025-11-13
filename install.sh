@@ -104,7 +104,9 @@ get_latest_version() {
 
 # Download and install binary
 install_binary() {
-    BINARY_NAME="maestro_${VERSION}_${OS}_${ARCH}.tar.gz"
+    # Strip 'v' prefix from version for filename (GoReleaser uses version without 'v')
+    VERSION_NO_V="${VERSION#v}"
+    BINARY_NAME="maestro_${VERSION_NO_V}_${OS}_${ARCH}.tar.gz"
     DOWNLOAD_URL="https://github.com/$REPO/releases/download/$VERSION/$BINARY_NAME"
 
     info "Downloading $BINARY_NAME..."

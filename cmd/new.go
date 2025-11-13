@@ -25,9 +25,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/christopher/mcl/assets"
-	"github.com/christopher/mcl/pkg/container"
-	"github.com/christopher/mcl/pkg/version"
+	"github.com/uprockcom/maestro/assets"
+	"github.com/uprockcom/maestro/pkg/container"
+	"github.com/uprockcom/maestro/pkg/version"
 	"github.com/spf13/cobra"
 )
 

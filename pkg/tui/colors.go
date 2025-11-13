@@ -15,7 +15,7 @@
 package tui
 
 // This file re-exports colors from the style package for backwards compatibility
-import "github.com/christopher/mcl/pkg/tui/style"
+import "github.com/uprockcom/maestro/pkg/tui/style"
 
 // Primary Colors
 var (

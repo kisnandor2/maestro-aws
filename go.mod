@@ -1,6 +1,6 @@
-module github.com/christopher/mcl
+module github.com/uprockcom/maestro
 
-go 1.24.2
+go 1.25
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
