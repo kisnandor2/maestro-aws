@@ -58,7 +58,7 @@ This stores credentials in `~/.maestro/` and shares them (read-only) with all co
 
 ### 2. Configure (Optional)
 
-Edit `~/.maestro/config.yml` to add additional folders and network domains:
+Edit `~/.maestro/config.yml` to customize your setup:
 
 ```yaml
 firewall:
@@ -66,14 +66,54 @@ firewall:
     - github.com
     - api.anthropic.com
     # Add your domains here
+  # For corporate networks with internal DNS (Zscaler, VPN, etc.)
+  internal_dns: "10.0.0.1"
+  internal_domains:
+    - "internal.company.com"
 
 sync:
   additional_folders:
     - ~/Documents/Code/mcp-servers
     - ~/Documents/Code/helpers
+
+# Git user for commits inside containers
+git:
+  user_name: "Your Name"
+  user_email: "you@example.com"
+
+# SSH agent forwarding for git authentication (keys stay on host)
+ssh:
+  enabled: true
+
+# AWS Bedrock support (alternative to Anthropic API)
+aws:
+  enabled: true
+  profile: "your-aws-profile"
+  region: "us-east-1"
+
+bedrock:
+  enabled: true
+  model: "anthropic.claude-sonnet-4-20250514-v1:0"
 ```
 
 You can also set firewall rules from the text UI using the `f` shortcut.
+
+#### AWS Bedrock Setup
+
+To use Claude via AWS Bedrock instead of the Anthropic API:
+
+1. Configure your AWS profile with Bedrock access
+2. Enable bedrock in config (see above)
+3. Run `maestro auth` to set up AWS SSO login
+4. Containers will automatically use Bedrock for Claude
+
+#### Corporate Network / VPN Setup
+
+If you're behind a corporate proxy (Zscaler, etc.) or need to access internal resources:
+
+1. Set `firewall.internal_dns` to your internal DNS server
+2. Add internal domains to `firewall.internal_domains`
+3. Host SSL certificates are automatically mounted for HTTPS inspection
 
 ### 3. Create Your First Container
 
