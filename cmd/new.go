@@ -548,6 +548,17 @@ func startContainer(containerName string) error {
 		}
 	}
 
+	// Mount Android SDK if configured (read-only for safety)
+	if config.Android.SDKPath != "" {
+		sdkPath := expandPath(config.Android.SDKPath)
+		if _, err := os.Stat(sdkPath); err == nil {
+			args = append(args,
+				"-v", fmt.Sprintf("%s:/home/node/Android/Sdk:ro", sdkPath),
+				"-e", "ANDROID_HOME=/home/node/Android/Sdk",
+			)
+		}
+	}
+
 	// Use version-synchronized image (or config override if set)
 	args = append(args, getDockerImage())
 
@@ -688,6 +699,11 @@ PROMPT_EOF`)
 	// Copy and import SSL certificates for Java
 	if err := copySSLCertificates(containerName); err != nil {
 		fmt.Printf("Warning: Failed to install SSL certificates: %v\n", err)
+	}
+
+	// Setup Android SDK environment (SDK is mounted as volume)
+	if err := setupAndroidSDK(containerName); err != nil {
+		fmt.Printf("Warning: Failed to setup Android SDK: %v\n", err)
 	}
 
 	// Initialize firewall
@@ -1092,6 +1108,41 @@ func initializeFirewall(containerName string) error {
 	if err := copyAppsToContainer(containerName); err != nil {
 		fmt.Printf("Warning: Failed to copy apps: %v\n", err)
 	}
+
+	return nil
+}
+
+func setupAndroidSDK(containerName string) error {
+	sdkPath := expandPath(config.Android.SDKPath)
+	if sdkPath == "" {
+		return nil // No Android SDK configured
+	}
+
+	// Check if SDK exists
+	if _, err := os.Stat(sdkPath); err != nil {
+		return nil // SDK not found
+	}
+
+	fmt.Println("Setting up Android SDK...")
+
+	// Set ANDROID_HOME environment variable in .zshrc
+	envCmd := exec.Command("docker", "exec", containerName, "sh", "-c",
+		`echo 'export ANDROID_HOME=/home/node/Android/Sdk' >> /home/node/.zshrc && echo 'export PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin' >> /home/node/.zshrc`)
+	if err := envCmd.Run(); err != nil {
+		fmt.Printf("Warning: Failed to set ANDROID_HOME: %v\n", err)
+	}
+
+	// Update local.properties in workspace if it exists
+	updateLocalPropertiesCmd := exec.Command("docker", "exec", containerName, "sh", "-c",
+		`if [ -f /workspace/local.properties ]; then
+			sed -i 's|sdk.dir=.*|sdk.dir=/home/node/Android/Sdk|' /workspace/local.properties
+			echo "  ✓ Updated local.properties"
+		fi`)
+	if err := updateLocalPropertiesCmd.Run(); err != nil {
+		fmt.Printf("Warning: Failed to update local.properties: %v\n", err)
+	}
+
+	fmt.Println("  ✓ Android SDK mounted at /home/node/Android/Sdk")
 
 	return nil
 }

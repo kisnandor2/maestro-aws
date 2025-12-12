@@ -71,6 +71,10 @@ type Config struct {
 		CertificatesPath string `mapstructure:"certificates_path"`
 	} `mapstructure:"ssl"`
 
+	Android struct {
+		SDKPath string `mapstructure:"sdk_path"`
+	} `mapstructure:"android"`
+
 	Git struct {
 		UserName  string `mapstructure:"user_name"`
 		UserEmail string `mapstructure:"user_email"`
@@ -307,6 +311,7 @@ func initConfig() {
 	viper.SetDefault("firewall.internal_domains", []string{})
 	viper.SetDefault("ssh.enabled", false)
 	viper.SetDefault("ssl.certificates_path", paths.CertificatesDir())
+	viper.SetDefault("android.sdk_path", "")
 	viper.SetDefault("git.user_name", "")
 	viper.SetDefault("git.user_email", "")
 	viper.SetDefault("github.enabled", false)
