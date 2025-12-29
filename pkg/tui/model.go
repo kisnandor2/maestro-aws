@@ -59,6 +59,7 @@ type Model struct {
 	containerCount      int                 // Number of containers
 	operationStatus     string              // Current operation status
 	daemonRunning       bool                // Whether daemon is running
+	dockerResponsive    bool                // Whether Docker daemon is responding
 	workingDir          string              // Current working directory (relative to ~)
 	animationFrame      int                 // Animation frame counter for pulsing effects
 	operationInProgress bool                // Whether an operation is currently running
@@ -242,6 +243,7 @@ func NewWithCache(containerPrefix string, cached *CachedState) *Model {
 		containerCount:      0,
 		operationStatus:     "Ready",
 		daemonRunning:       true, // TODO: Check actual daemon status
+		dockerResponsive:    true, // Assume true until first check completes
 		workingDir:          relPath,
 		animationFrame:      0,
 		operationInProgress: false,
@@ -417,13 +419,30 @@ func (m Model) GetState() *CachedState {
 // loadContainers fetches container data
 func (m Model) loadContainers() tea.Cmd {
 	return func() tea.Msg {
+		// Check if Docker is responsive first
+		dockerResponsive := container.IsDockerResponsive()
+		if !dockerResponsive {
+			return containersLoadedMsg{
+				containers:       []container.Info{},
+				err:              nil,
+				dockerResponsive: false,
+			}
+		}
+
 		containers, err := container.GetAllContainers(m.containerPrefix)
 		if err != nil {
-			// For now, return empty list on error
-			return containersLoadedMsg{containers: []container.Info{}, err: nil}
+			// Return empty list on error, but Docker was responsive
+			return containersLoadedMsg{
+				containers:       []container.Info{},
+				err:              nil,
+				dockerResponsive: true,
+			}
 		}
-		// TODO: Check daemon status
-		return containersLoadedMsg{containers: containers, err: nil}
+		return containersLoadedMsg{
+			containers:       containers,
+			err:              nil,
+			dockerResponsive: true,
+		}
 	}
 }
 
@@ -721,8 +740,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.operationStatus = "Ready"
 
-		// Update container count
+		// Update container count and Docker status
 		m.containerCount = len(msg.containers)
+		m.dockerResponsive = msg.dockerResponsive
 		m.updateStatusBar()
 
 		// Only show toast for initial load, not background refreshes
@@ -2189,8 +2209,16 @@ func (m *Model) updateStatusBar() {
 		Render(pathText)
 
 	// Column 3: Operation status with spinner if operation in progress (PurpleHaze background)
+	// Shows warning in red if Docker is unresponsive
 	var col3 string
-	if m.operationInProgress {
+	if !m.dockerResponsive {
+		// Docker not responding - show red warning
+		col3 = lipgloss.NewStyle().
+			Foreground(style.GhostWhite).
+			Background(style.CrimsonPulse).
+			Bold(true).
+			Render(" Is Docker running? ")
+	} else if m.operationInProgress {
 		// Style both spinner and text with matching background
 		spinnerPart := m.operationSpinner.View()
 		textPart := lipgloss.NewStyle().

@@ -52,9 +52,9 @@ signing-image:
 	@echo "✓ Built: maestro-signing:$(SIGNING_IMAGE_VERSION)"
 	@echo "✓ Tagged: maestro-signing:latest"
 
-# Install to system PATH
-install: build
-	sudo cp bin/maestro /usr/local/bin/
+# Install to system PATH (run 'make build' first, then 'sudo make install')
+install:
+	cp bin/maestro /usr/local/bin/
 
 # Run tests
 test:

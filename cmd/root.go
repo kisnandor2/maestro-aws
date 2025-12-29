@@ -228,6 +228,11 @@ func performCreate(taskDescription, branchName string, noConnect, exact bool) er
 }
 
 func initConfig() {
+	// Ensure config directory exists
+	if err := paths.EnsureConfigDir(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not create config directory: %v\n", err)
+	}
+
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 	} else {

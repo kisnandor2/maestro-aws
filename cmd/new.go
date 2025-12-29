@@ -89,6 +89,15 @@ func runNew(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to generate branch name: %w", err)
 	}
 
+	// Validate the branch name and prompt user if invalid
+	if !isValidBranchName(branchName) {
+		fmt.Printf("Generated branch name '%s' is invalid.\n", branchName)
+		branchName, err = promptUserForBranchName(taskDescription)
+		if err != nil {
+			return fmt.Errorf("failed to get branch name: %w", err)
+		}
+	}
+
 	// Step 2: Get next container number
 	containerName, err := getNextContainerName(branchName)
 	if err != nil {
@@ -174,49 +183,174 @@ func generateBranchAndPrompt(taskDescription string, exact bool) (string, string
 	}
 
 	// Normal mode: Generate both branch name and planning prompt via AI
-	// Create prompt for Claude to generate a concise branch name and planning prompt
-	claudePrompt := fmt.Sprintf(`Given this task description:
+	// Includes retry logic for robustness
+	const maxRetries = 3
 
-%s
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		var claudePrompt string
+		if attempt == 1 {
+			claudePrompt = fmt.Sprintf(`Analyze this task and generate a branch name and planning prompt.
 
-Generate:
-1. A SHORT, concise git branch name (max 40 chars) following git-flow conventions (feat/, fix/, refactor/, etc.)
-   - Use abbreviations and remove unnecessary words
-   - Examples: "implement user authentication system" -> "feat/user-auth"
-   - Examples: "fix bug in payment processor" -> "fix/payment-processor"
-   - Examples: "refactor database connection pooling" -> "refactor/db-pooling"
+Task: %s
 
-2. A detailed planning prompt for implementing this task
+Step 1 - BRANCH NAME:
+- Extract the CORE GOAL (ignore setup instructions like "read file X", "switch branch")
+- Include key identifiers (PR numbers, issue IDs, feature names)
+- Use prefix: feat/ fix/ refactor/ docs/ test/ review/ chore/
+- Max 40 chars, lowercase, only letters/numbers/hyphens
 
-Format your response EXACTLY as:
+Examples:
+- "Read spec.md and add user auth" -> feat/user-auth
+- "Review PR #42 for payments" -> review/pr-42
+- "Fix issue #99 with login" -> fix/issue-99-login
+
+Step 2 - PLANNING PROMPT:
+- Create a detailed prompt for implementing this task
+
+FORMAT (must match exactly):
 BRANCH: <branch-name>
-PROMPT: <detailed-planning-prompt>`, taskDescription)
+PROMPT: <planning-prompt>`, taskDescription)
+		} else {
+			// More explicit prompt on retry
+			claudePrompt = fmt.Sprintf(`Extract the SEMANTIC MEANING and respond in exact format.
 
-	// Call Claude CLI in --print mode to generate branch and prompt (using haiku for speed/cost)
-	cmd := exec.Command("claude", "--print", "Generate branch name and prompt", "--model", "haiku", "--dangerously-skip-permissions")
-	cmd.Stdin = strings.NewReader(claudePrompt)
-	output, err := cmd.Output()
-	if err != nil {
-		// Fallback to simple branch name generation
-		simpleBranch := generateSimpleBranch(taskDescription)
-		planningPrompt := fmt.Sprintf(`Please plan the implementation for the following task:
+Task: %s
+
+What is actually being done? (Ignore "please read X", "after doing Y" - get the real goal)
+
+BAD branch: feat/please-read-file-and-review (too literal)
+GOOD branch: review/pr-42 (captures actual goal)
+
+Respond EXACTLY as:
+BRANCH: prefix/short-name
+PROMPT: your planning prompt here
+
+Prefixes: feat/ fix/ refactor/ docs/ test/ review/ chore/`, taskDescription)
+		}
+
+		// Call Claude CLI in --print mode to generate branch and prompt (using haiku for speed/cost)
+		cmd := exec.Command("claude", "--print", "Generate branch name and prompt", "--model", "haiku", "--dangerously-skip-permissions")
+		cmd.Stdin = strings.NewReader(claudePrompt)
+		output, err := cmd.Output()
+		if err != nil {
+			if attempt == maxRetries {
+				// AI unavailable, use fallback
+				break
+			}
+			continue
+		}
+
+		// Parse output
+		outputStr := string(output)
+		branchRe := regexp.MustCompile(`BRANCH:\s*(.+)`)
+		promptRe := regexp.MustCompile(`PROMPT:\s*(.+)`)
+
+		branchMatch := branchRe.FindStringSubmatch(outputStr)
+		promptMatch := promptRe.FindStringSubmatch(outputStr)
+
+		if len(branchMatch) > 1 && len(promptMatch) > 1 {
+			branchName := strings.TrimSpace(branchMatch[1])
+
+			// Normalize: convert to lowercase and remove any surrounding quotes
+			branchName = strings.ToLower(branchName)
+			branchName = strings.Trim(branchName, "\"'`")
+
+			// Enforce max length (40 chars) in case AI ignored the instruction
+			if len(branchName) > 40 {
+				branchName = branchName[:40]
+				branchName = strings.TrimRight(branchName, "-/")
+			}
+
+			// Validate the branch name format
+			if isValidBranchName(branchName) {
+				return branchName, strings.TrimSpace(promptMatch[1]), nil
+			}
+		}
+
+		// Log retry if not last attempt
+		if attempt < maxRetries {
+			fmt.Printf("Branch generation attempt %d failed validation, retrying...\n", attempt)
+		}
+	}
+
+	// Fallback to simple branch name generation
+	simpleBranch := generateSimpleBranch(taskDescription)
+	planningPrompt := fmt.Sprintf(`Please plan the implementation for the following task:
 
 %s
 
 Break down the implementation into clear steps and identify key components that need to be created or modified.`, taskDescription)
-		return simpleBranch, planningPrompt, nil
-	}
+	return simpleBranch, planningPrompt, nil
+}
 
-	// Parse output
-	outputStr := string(output)
-	branchRe := regexp.MustCompile(`BRANCH:\s*(.+)`)
-	promptRe := regexp.MustCompile(`PROMPT:\s*(.+)`)
+// generateBranchNameOnly generates just a branch name via AI, without a planning prompt
+// Includes retry logic and validation to handle cases where the AI returns invalid output
+func generateBranchNameOnly(taskDescription string) (string, error) {
+	const maxRetries = 3
 
-	branchMatch := branchRe.FindStringSubmatch(outputStr)
-	promptMatch := promptRe.FindStringSubmatch(outputStr)
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		var claudePrompt string
+		if attempt == 1 {
+			claudePrompt = fmt.Sprintf(`Extract the CORE TASK from this description and create a git branch name.
 
-	if len(branchMatch) > 1 && len(promptMatch) > 1 {
-		branchName := strings.TrimSpace(branchMatch[1])
+Description: %s
+
+Instructions:
+1. Identify what is actually being built/fixed/reviewed (ignore instructions like "read file X" or "switch to branch")
+2. Extract key identifiers (PR numbers, ticket IDs, feature names)
+3. Create a branch name: prefix/2-4-word-summary
+
+Prefixes: feat/ fix/ refactor/ docs/ test/ review/ chore/
+
+Examples:
+- "Please read requirements.txt and implement user login" -> feat/user-login
+- "Review PR #42 for the authentication module" -> review/pr-42
+- "Fix the bug in issue #123 where payments fail" -> fix/issue-123-payments
+- "After reading the spec, add dark mode support" -> feat/dark-mode
+- "Refactor the database queries in the user service" -> refactor/user-db-queries
+
+Output ONLY the branch name (lowercase, max 40 chars):`, taskDescription)
+		} else {
+			// More explicit prompt on retry
+			claudePrompt = fmt.Sprintf(`What is the MAIN GOAL of this task? Create a branch name for it.
+
+Task: %s
+
+DO NOT include filler words from the description. Extract the semantic meaning.
+BAD: feat/please-read-file-and-do-thing (too literal)
+GOOD: feat/thing (captures the actual goal)
+
+Format: prefix/short-name (lowercase, letters/numbers/hyphens only)
+Prefixes: feat/ fix/ refactor/ docs/ test/ review/ chore/
+
+Output ONLY the branch name:`, taskDescription)
+		}
+
+		// Call Claude CLI in --print mode to generate just the branch name (using haiku for speed/cost)
+		cmd := exec.Command("claude", "--print", "Generate branch name", "--model", "haiku", "--dangerously-skip-permissions")
+		cmd.Stdin = strings.NewReader(claudePrompt)
+		output, err := cmd.Output()
+		if err != nil {
+			if attempt == maxRetries {
+				return "", fmt.Errorf("AI unavailable after %d attempts: %w", maxRetries, err)
+			}
+			continue
+		}
+
+		// Parse output - just take the first line and trim it
+		branchName := strings.TrimSpace(strings.Split(string(output), "\n")[0])
+
+		// Skip empty results
+		if branchName == "" {
+			if attempt == maxRetries {
+				return "", fmt.Errorf("empty branch name from AI after %d attempts", maxRetries)
+			}
+			continue
+		}
+
+		// Normalize: convert to lowercase and remove any surrounding quotes
+		branchName = strings.ToLower(branchName)
+		branchName = strings.Trim(branchName, "\"'`")
 
 		// Enforce max length (40 chars) in case AI ignored the instruction
 		if len(branchName) > 40 {
@@ -224,42 +358,57 @@ Break down the implementation into clear steps and identify key components that 
 			branchName = strings.TrimRight(branchName, "-/")
 		}
 
-		return branchName, strings.TrimSpace(promptMatch[1]), nil
+		// Validate the branch name format
+		if isValidBranchName(branchName) {
+			return branchName, nil
+		}
+
+		// If invalid, log and retry
+		if attempt < maxRetries {
+			fmt.Printf("Branch name attempt %d returned invalid format, retrying...\n", attempt)
+		}
 	}
 
-	// Fallback
-	return generateSimpleBranch(taskDescription), taskDescription, nil
+	return "", fmt.Errorf("failed to generate valid branch name after %d attempts", maxRetries)
 }
 
-// generateBranchNameOnly generates just a branch name via AI, without a planning prompt
-func generateBranchNameOnly(taskDescription string) (string, error) {
-	claudePrompt := fmt.Sprintf(`Given this task description:
+// isValidBranchName checks if a string looks like a valid git branch name
+// (lowercase with optional prefix like feat/, fix/, etc. containing only alphanumeric and hyphens)
+func isValidBranchName(name string) bool {
+	if name == "" {
+		return false
+	}
+	// Must match pattern: optional prefix (feat/, fix/, etc.) followed by lowercase alphanumeric and hyphens
+	// Valid examples: feat/add-auth, fix/bug-123, refactor/db-pool, add-new-feature
+	validPattern := regexp.MustCompile(`^[a-z][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?$`)
+	return validPattern.MatchString(name)
+}
 
-%s
+// promptUserForBranchName asks the user to provide a branch name when automated generation fails
+func promptUserForBranchName(taskDescription string) (string, error) {
+	fmt.Println("\n⚠️  Automated branch name generation failed.")
+	fmt.Println("Please enter a branch name manually.")
+	fmt.Println("(Use lowercase letters, numbers, and hyphens. e.g., feat/add-auth or fix/bug-123)")
+	fmt.Printf("Task: %s\n", truncateString(taskDescription, 60))
+	fmt.Print("Branch name: ")
 
-Generate a SHORT, concise git branch name (max 40 chars) following git-flow conventions (feat/, fix/, refactor/, etc.)
-- Use abbreviations and remove unnecessary words
-- Examples: "implement user authentication system" -> "feat/user-auth"
-- Examples: "fix bug in payment processor" -> "fix/payment-processor"
-- Examples: "refactor database connection pooling" -> "refactor/db-pooling"
-
-Respond with ONLY the branch name, nothing else.`, taskDescription)
-
-	// Call Claude CLI in --print mode to generate just the branch name (using haiku for speed/cost)
-	cmd := exec.Command("claude", "--print", "Generate branch name", "--model", "haiku", "--dangerously-skip-permissions")
-	cmd.Stdin = strings.NewReader(claudePrompt)
-	output, err := cmd.Output()
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to read input: %w", err)
 	}
 
-	// Parse output - just take the first line and trim it
-	branchName := strings.TrimSpace(strings.Split(string(output), "\n")[0])
+	branchName := strings.TrimSpace(input)
 	if branchName == "" {
-		return "", fmt.Errorf("empty branch name from AI")
+		return "", fmt.Errorf("branch name cannot be empty")
 	}
 
-	// Enforce max length (40 chars) in case AI ignored the instruction
+	// Sanitize user input - convert to lowercase and replace invalid chars
+	branchName = strings.ToLower(branchName)
+	branchName = regexp.MustCompile(`[^a-z0-9/-]+`).ReplaceAllString(branchName, "-")
+	branchName = strings.Trim(branchName, "-")
+
+	// Enforce max length
 	if len(branchName) > 40 {
 		branchName = branchName[:40]
 		branchName = strings.TrimRight(branchName, "-/")
@@ -299,6 +448,11 @@ func generateSimpleBranch(description string) string {
 		desc = desc[:35]
 	}
 	desc = strings.TrimRight(desc, "-")
+
+	// Handle edge case where description has no usable characters
+	if desc == "" {
+		desc = fmt.Sprintf("task-%d", time.Now().Unix()%100000)
+	}
 
 	return fmt.Sprintf("feat/%s", desc)
 }
@@ -1073,14 +1227,25 @@ func CreateContainerFromTUI(taskDescription, branchNameOverride string, skipConn
 	var err error
 
 	if branchNameOverride != "" {
-		// User provided custom branch name
-		branchName = branchNameOverride
+		// User provided custom branch name - sanitize it
+		branchName = strings.ToLower(branchNameOverride)
+		branchName = regexp.MustCompile(`[^a-z0-9/-]+`).ReplaceAllString(branchName, "-")
+		branchName = strings.Trim(branchName, "-")
 		planningPrompt = taskDescription // Use description as prompt
 	} else {
 		// Generate branch name and planning prompt using Claude
 		branchName, planningPrompt, err = generateBranchAndPrompt(taskDescription, exact)
 		if err != nil {
 			return fmt.Errorf("failed to generate branch name: %w", err)
+		}
+	}
+
+	// Validate the branch name and prompt user if invalid
+	if !isValidBranchName(branchName) {
+		fmt.Printf("Generated branch name '%s' is invalid.\n", branchName)
+		branchName, err = promptUserForBranchName(taskDescription)
+		if err != nil {
+			return fmt.Errorf("failed to get branch name: %w", err)
 		}
 	}
 

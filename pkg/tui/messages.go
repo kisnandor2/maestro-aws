@@ -62,8 +62,9 @@ type prerequisiteCheckResult struct {
 
 // containersLoadedMsg is sent when container data is loaded
 type containersLoadedMsg struct {
-	containers []container.Info
-	err        error
+	containers       []container.Info
+	err              error
+	dockerResponsive bool
 }
 
 // daemonStatusMsg is sent when daemon status is checked
