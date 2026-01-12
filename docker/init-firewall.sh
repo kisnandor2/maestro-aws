@@ -115,11 +115,18 @@ echo "server=/.githubusercontent.com/8.8.8.8" >> "$DNSMASQ_CONF"
 echo "ipset=/.anthropic.com/allowed-domains" >> "$DNSMASQ_CONF"
 echo "server=/.anthropic.com/8.8.8.8" >> "$DNSMASQ_CONF"
 
-# Add wildcard entries for AWS (to catch region-specific subdomains like bedrock-runtime.eu-central-1.amazonaws.com)
-echo "ipset=/.amazonaws.com/allowed-domains" >> "$DNSMASQ_CONF"
-echo "server=/.amazonaws.com/8.8.8.8" >> "$DNSMASQ_CONF"
-echo "ipset=/.awsapps.com/allowed-domains" >> "$DNSMASQ_CONF"
-echo "server=/.awsapps.com/8.8.8.8" >> "$DNSMASQ_CONF"
+# Add wildcard entries for AWS (only if AWS/Bedrock is enabled)
+# This is controlled by /etc/aws-enabled.txt which is written by maestro when aws.enabled or bedrock.enabled is true
+AWS_ENABLED_FILE="/etc/aws-enabled.txt"
+if [ -f "$AWS_ENABLED_FILE" ]; then
+    echo "AWS/Bedrock enabled - adding AWS domain rules"
+    echo "ipset=/.amazonaws.com/allowed-domains" >> "$DNSMASQ_CONF"
+    echo "server=/.amazonaws.com/8.8.8.8" >> "$DNSMASQ_CONF"
+    echo "ipset=/.awsapps.com/allowed-domains" >> "$DNSMASQ_CONF"
+    echo "server=/.awsapps.com/8.8.8.8" >> "$DNSMASQ_CONF"
+else
+    echo "AWS/Bedrock not enabled - skipping AWS domain rules"
+fi
 
 # Configure internal DNS for corporate networks (Zscaler, VPN, etc.)
 INTERNAL_DNS_FILE="/etc/internal-dns.txt"

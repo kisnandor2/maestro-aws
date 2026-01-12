@@ -1092,6 +1092,16 @@ func initializeFirewall(containerName string) error {
 		}
 	}
 
+	// Write AWS config flag if Bedrock or AWS is enabled
+	// This tells the firewall script to add AWS domain rules
+	if config.AWS.Enabled || config.Bedrock.Enabled {
+		writeAWSConfigCmd := exec.Command("docker", "exec", "-u", "root", containerName, "sh", "-c",
+			"echo 'enabled' > /etc/aws-enabled.txt")
+		if err := writeAWSConfigCmd.Run(); err != nil {
+			fmt.Printf("Warning: Failed to write AWS config: %v\n", err)
+		}
+	}
+
 	// Run firewall initialization as root (with timeout in background)
 	// We run it in the background because the verification steps can hang
 	firewallCmd := exec.Command("docker", "exec", "-u", "root", "-d", containerName, "/usr/local/bin/init-firewall.sh")
