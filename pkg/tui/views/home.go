@@ -23,6 +23,37 @@ import (
 	"github.com/uprockcom/maestro/pkg/tui/style"
 )
 
+// Column configuration for dynamic sizing
+type columnConfig struct {
+	title    string
+	baseSize int // Base width used to calculate proportions
+	minSize  int // Minimum width for this column
+}
+
+var (
+	// Maximum table width before centering kicks in
+	maxTableWidth = 160
+
+	// Column definitions with base sizes and minimums
+	columnConfigs = []columnConfig{
+		{title: "NAME", baseSize: 25, minSize: 15},
+		{title: "STATUS", baseSize: 14, minSize: 12},
+		{title: "BRANCH", baseSize: 25, minSize: 15},
+		{title: "GIT", baseSize: 10, minSize: 8},
+		{title: "ACTIVITY", baseSize: 12, minSize: 10},
+		{title: "AUTH", baseSize: 12, minSize: 10},
+	}
+
+	// Total base width for proportion calculations
+	totalBaseWidth = func() int {
+		total := 0
+		for _, c := range columnConfigs {
+			total += c.baseSize
+		}
+		return total
+	}()
+)
+
 // HomeModel is the main container list view
 type HomeModel struct {
 	table         table.Model
@@ -33,16 +64,50 @@ type HomeModel struct {
 	daemonRunning bool
 }
 
+// calculateColumnWidths returns column widths scaled to fit the given width
+func calculateColumnWidths(availableWidth int) []table.Column {
+	// Account for table borders and padding (roughly 4 chars for borders + spacing)
+	usableWidth := availableWidth - 4
+	if usableWidth < totalBaseWidth {
+		usableWidth = totalBaseWidth
+	}
+
+	columns := make([]table.Column, len(columnConfigs))
+	remainingWidth := usableWidth
+
+	// First pass: calculate proportional widths, respecting minimums
+	for i, cfg := range columnConfigs {
+		// Calculate proportional width
+		proportionalWidth := (cfg.baseSize * usableWidth) / totalBaseWidth
+
+		// Ensure minimum width
+		if proportionalWidth < cfg.minSize {
+			proportionalWidth = cfg.minSize
+		}
+
+		columns[i] = table.Column{
+			Title: cfg.title,
+			Width: proportionalWidth,
+		}
+		remainingWidth -= proportionalWidth
+	}
+
+	// Distribute any remaining width to the expandable columns (NAME and BRANCH)
+	if remainingWidth > 0 {
+		expandableIndices := []int{0, 2} // NAME and BRANCH
+		extraPerColumn := remainingWidth / len(expandableIndices)
+		for _, idx := range expandableIndices {
+			columns[idx].Width += extraPerColumn
+		}
+	}
+
+	return columns
+}
+
 // NewHomeModel creates a new home view
 func NewHomeModel(containers []container.Info, daemonRunning bool) *HomeModel {
-	columns := []table.Column{
-		{Title: "NAME", Width: 25},
-		{Title: "STATUS", Width: 14},
-		{Title: "BRANCH", Width: 25},
-		{Title: "GIT", Width: 10},
-		{Title: "ACTIVITY", Width: 12},
-		{Title: "AUTH", Width: 12},
-	}
+	// Start with base column widths
+	columns := calculateColumnWidths(totalBaseWidth)
 
 	t := table.New(
 		table.WithColumns(columns),
@@ -167,8 +232,23 @@ func (h *HomeModel) SetSize(width, height int) {
 	// Don't limit by container count - let table scroll if needed
 	h.table.SetHeight(tableHeight)
 
-	// Set table width
-	h.table.SetWidth(width)
+	// Calculate effective table width (capped at max)
+	effectiveWidth := width
+	if effectiveWidth > maxTableWidth {
+		effectiveWidth = maxTableWidth
+	}
+
+	// Update column widths proportionally
+	columns := calculateColumnWidths(effectiveWidth)
+	h.table.SetColumns(columns)
+
+	// Only set table viewport width if we're filling the space
+	// When viewport > max, don't set width so lipgloss.Place can center
+	if width <= maxTableWidth {
+		h.table.SetWidth(width)
+	} else {
+		h.table.SetWidth(maxTableWidth)
+	}
 }
 
 // SetAnimationState updates the animation state for pulsing indicators

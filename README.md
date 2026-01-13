@@ -192,7 +192,7 @@ maestro cleanup
 
 When connected via `maestro connect`:
 
-- **Window 0**: Claude Code (auto-approved mode)
+- **Window 0**: Claude Code (auto-approve mode)
 - **Window 1**: Shell for manual commands
 - **Switch windows**: `Ctrl+b 0` or `Ctrl+b 1`
 - **Detach**: `Ctrl+b d` (container keeps running)

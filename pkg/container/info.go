@@ -49,6 +49,13 @@ func TimeUntilExpiration(creds *Credentials) time.Duration {
 	return time.Until(expiresAt)
 }
 
+// IsDockerResponsive checks if Docker daemon is responding
+func IsDockerResponsive() bool {
+	cmd := exec.Command("docker", "info")
+	err := cmd.Run()
+	return err == nil
+}
+
 // FormatExpiration returns human-readable expiration status
 func FormatExpiration(creds *Credentials) string {
 	duration := TimeUntilExpiration(creds)

@@ -34,6 +34,13 @@ func init() {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
+	// Check if Docker is responsive
+	if !container.IsDockerResponsive() {
+		fmt.Println("No maestro containers found.")
+		fmt.Println("\nHint: Is Docker running?")
+		return nil
+	}
+
 	// Get all containers (including stopped ones)
 	containers, err := container.GetAllContainers(config.Containers.Prefix)
 	if err != nil {
