@@ -84,6 +84,7 @@ git:
 # SSH agent forwarding for git authentication (keys stay on host)
 ssh:
   enabled: true
+  known_hosts_path: "~/.ssh/known_hosts"  # mount host's known_hosts to avoid prompts
 
 # AWS Bedrock support (alternative to Anthropic API)
 aws:

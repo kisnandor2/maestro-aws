@@ -700,6 +700,16 @@ func startContainer(containerName string) error {
 		} else {
 			fmt.Println("Warning: SSH enabled but SSH_AUTH_SOCK not set. Run 'ssh-add' first.")
 		}
+
+		// Mount known_hosts from host to avoid SSH host key verification prompts
+		if config.SSH.KnownHostsPath != "" {
+			knownHostsPath := expandPath(config.SSH.KnownHostsPath)
+			if _, err := os.Stat(knownHostsPath); err == nil {
+				args = append(args,
+					"-v", fmt.Sprintf("%s:/home/node/.ssh/known_hosts:ro", knownHostsPath),
+				)
+			}
+		}
 	}
 
 	// Mount Android SDK if configured (read-only for safety)

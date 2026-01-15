@@ -65,7 +65,8 @@ type Config struct {
 	} `mapstructure:"sync"`
 
 	SSH struct {
-		Enabled bool `mapstructure:"enabled"`
+		Enabled        bool   `mapstructure:"enabled"`
+		KnownHostsPath string `mapstructure:"known_hosts_path"`
 	} `mapstructure:"ssh"`
 
 	SSL struct {
@@ -320,6 +321,7 @@ func initConfig() {
 	viper.SetDefault("firewall.internal_dns", "")
 	viper.SetDefault("firewall.internal_domains", []string{})
 	viper.SetDefault("ssh.enabled", false)
+	viper.SetDefault("ssh.known_hosts_path", "~/.ssh/known_hosts")
 	viper.SetDefault("ssl.certificates_path", paths.CertificatesDir())
 	viper.SetDefault("android.sdk_path", "")
 	viper.SetDefault("git.user_name", "")
