@@ -291,6 +291,9 @@ func (h *HomeModel) formatName(c container.Info) string {
 func (h *HomeModel) formatStatus(c container.Info) string {
 	switch c.Status {
 	case "running":
+		if c.NeedsAttention {
+			return "⚠️  Waiting"
+		}
 		return "● Running"
 	case "exited":
 		return "■ Stopped"
