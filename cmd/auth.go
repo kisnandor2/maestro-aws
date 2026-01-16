@@ -130,6 +130,28 @@ func runBedrockAuth() error {
 	fmt.Printf("AWS Profile: %s\n", config.AWS.Profile)
 	fmt.Printf("AWS Region: %s\n", config.AWS.Region)
 	fmt.Printf("Bedrock Model: %s\n", config.Bedrock.Model)
+
+	// Ask user if they want to set up GitHub CLI (same as non-Bedrock flow)
+	fmt.Println("\n========================================================================")
+	hostname := config.GitHub.Hostname
+	if hostname == "" {
+		hostname = "github.com"
+	}
+	fmt.Printf("\nWould you like to set up GitHub CLI (gh) authentication for %s? (y/N): ", hostname)
+	var response string
+	fmt.Scanln(&response)
+
+	if response == "y" || response == "Y" || response == "yes" || response == "Yes" {
+		if err := setupGitHubAuth(); err != nil {
+			fmt.Printf("\n⚠️  GitHub CLI setup failed: %v\n", err)
+			fmt.Println("You can skip this and run 'gh auth login' manually later.")
+		}
+	} else {
+		fmt.Println("\nSkipping GitHub CLI setup.")
+		fmt.Println("You can set it up later by running 'gh auth login' in a container,")
+		fmt.Println("or enable github.enabled in your config file and authenticate on the host.")
+	}
+
 	fmt.Println("\nYou can now create containers with: maestro new <description>")
 
 	return nil
@@ -314,7 +336,14 @@ func setupGitHubAuth() error {
 		return fmt.Errorf("failed to create MCL gh directory: %w", err)
 	}
 
+	// Determine hostname (default to github.com)
+	hostname := config.GitHub.Hostname
+	if hostname == "" {
+		hostname = "github.com"
+	}
+
 	fmt.Printf("\nGitHub CLI directory: %s\n", mclGhPath)
+	fmt.Printf("GitHub hostname: %s\n", hostname)
 
 	// Clear existing GitHub auth data
 	fmt.Println("Clearing existing GitHub authentication data...")
@@ -363,10 +392,10 @@ func setupGitHubAuth() error {
 		)
 	}
 
-	args = append(args,
-		config.Containers.Image,
-		"gh", "auth", "login",
-	)
+	// Build gh auth login command with hostname
+	ghAuthArgs := []string{"gh", "auth", "login", "--hostname", hostname}
+	args = append(args, config.Containers.Image)
+	args = append(args, ghAuthArgs...)
 
 	ghAuthCmd := exec.Command("docker", args...)
 	ghAuthCmd.Stdin = os.Stdin
@@ -387,6 +416,7 @@ func setupGitHubAuth() error {
 	hostsPath := filepath.Join(mclGhPath, "hosts.yml")
 	if _, err := os.Stat(hostsPath); err == nil {
 		fmt.Println("\n✅ GitHub CLI authentication successful!")
+		fmt.Printf("Hostname: %s\n", hostname)
 		fmt.Printf("Configuration saved to: %s\n", mclGhPath)
 		fmt.Println("\nGitHub CLI will be available in all MCL containers when github.enabled is true.")
 	} else {

@@ -86,6 +86,11 @@ ssh:
   enabled: true
   known_hosts_path: "~/.ssh/known_hosts"  # mount host's known_hosts to avoid prompts
 
+# GitHub CLI integration (for PRs, issues, etc.)
+github:
+  enabled: true
+  hostname: "github.mycompany.com"  # For GitHub Enterprise (omit for github.com)
+
 # AWS Bedrock support (alternative to Anthropic API)
 aws:
   enabled: true

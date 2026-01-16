@@ -85,6 +85,7 @@ type Config struct {
 	GitHub struct {
 		Enabled    bool   `mapstructure:"enabled"`
 		ConfigPath string `mapstructure:"config_path"`
+		Hostname   string `mapstructure:"hostname"` // For GitHub Enterprise (e.g., git.int.avast.com)
 	} `mapstructure:"github"`
 
 	AWS struct {
