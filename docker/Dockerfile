@@ -59,7 +59,7 @@ ENV PATH="${GOPATH}/bin:${PATH}"
 
 # Install Java JDK 17 (for Android development)
 RUN ARCH=$(dpkg --print-architecture) && \
-  if [ "$ARCH" = "amd64" ]; then JAVA_ARCH="x64"; else JAVA_ARCH="$ARCH"; fi && \
+  if [ "$ARCH" = "amd64" ]; then JAVA_ARCH="x64"; elif [ "$ARCH" = "arm64" ]; then JAVA_ARCH="aarch64"; else JAVA_ARCH="$ARCH"; fi && \
   wget "https://download.java.net/java/GA/jdk17.0.2/dfd4a8d0985749f896bed50d7138ee7f/8/GPL/openjdk-17.0.2_linux-${JAVA_ARCH}_bin.tar.gz" && \
   tar -C /usr/local -xzf "openjdk-17.0.2_linux-${JAVA_ARCH}_bin.tar.gz" && \
   rm "openjdk-17.0.2_linux-${JAVA_ARCH}_bin.tar.gz"
