@@ -29,7 +29,8 @@ import (
 )
 
 var (
-	batchFile string
+	batchFile    string
+	extraCommand string
 )
 
 // Task represents a single task extracted from the markdown file
@@ -47,15 +48,21 @@ var batchCmd = &cobra.Command{
 Uses AI to identify distinct tasks in the file, then lets you select which ones
 to start as separate Maestro containers.
 
+The --extra-command flag allows you to add an instruction that will be sent to Claude
+in every container after the main task is complete. This is useful for common follow-up
+actions like committing, pushing, and creating PRs.
+
 Examples:
   maestro batch --file tasks.md
-  maestro batch -f sprint-backlog.md`,
+  maestro batch -f sprint-backlog.md
+  maestro batch -f tasks.md -e "When done, commit your changes, push to origin, and open a PR against main"`,
 	RunE: runBatch,
 }
 
 func init() {
 	rootCmd.AddCommand(batchCmd)
 	batchCmd.Flags().StringVarP(&batchFile, "file", "f", "", "Markdown file containing tasks (required)")
+	batchCmd.Flags().StringVarP(&extraCommand, "extra-command", "e", "", "Extra command to send to Claude in all containers after the main task")
 	batchCmd.MarkFlagRequired("file")
 }
 
@@ -98,8 +105,8 @@ func runBatch(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("\nStarting %d container(s)...\n\n", len(selectedTasks))
 
-	// Create containers in parallel, passing full markdown as reference
-	if err := createContainersInParallel(selectedTasks, string(content)); err != nil {
+	// Create containers in parallel, passing full markdown as reference and extra command
+	if err := createContainersInParallel(selectedTasks, string(content), extraCommand); err != nil {
 		return err
 	}
 
@@ -249,7 +256,7 @@ type ContainerResult struct {
 }
 
 // createContainersInParallel creates containers for selected tasks concurrently
-func createContainersInParallel(tasks []Task, fullMarkdown string) error {
+func createContainersInParallel(tasks []Task, fullMarkdown string, extraCmd string) error {
 	var wg sync.WaitGroup
 	results := make(chan ContainerResult, len(tasks))
 
@@ -286,6 +293,14 @@ FULL DOCUMENT FOR REFERENCE:
 
 Focus ONLY on your assigned task above. The document is provided for context only.`,
 				t.Number, t.Title, taskDescription, fullMarkdown)
+
+			// Append extra command if provided
+			if extraCmd != "" {
+				fullPrompt += fmt.Sprintf(`
+
+ADDITIONAL INSTRUCTION (execute after completing the task above):
+%s`, extraCmd)
+			}
 
 			// Generate branch name from the specific task (not the full prompt)
 			branchName, _, err := generateBranchAndPrompt(taskDescription, false)
