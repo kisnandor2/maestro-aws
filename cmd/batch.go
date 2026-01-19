@@ -109,7 +109,7 @@ func runBatch(cmd *cobra.Command, args []string) error {
 
 // analyzeTasks uses Claude to analyze the markdown and extract tasks
 func analyzeTasks(content string) ([]Task, error) {
-	prompt := fmt.Sprintf(`Analyze this document and identify distinct tasks or work items.
+	prompt := fmt.Sprintf(`Analyze this document and identify tasks that can be worked on IN PARALLEL by different developers.
 
 Document:
 ---
@@ -117,13 +117,28 @@ Document:
 ---
 
 Instructions:
-1. Identify each separate task, feature request, bug fix, or work item
-2. Tasks might be indicated by headers, numbered lists, bullet points, or separate sections
-3. Extract a short title (max 60 chars) and the full description for each task
-4. Number them starting from 1
+1. Identify LOGICALLY INDEPENDENT work units that could be assigned to different people
+2. CRITICAL: Do NOT split sequential/dependent steps into separate tasks
+   - If steps must be done in order (e.g., "create file A, then modify file A"), keep them as ONE task
+   - If a section has numbered sub-steps, that's usually ONE task, not multiple
+   - Phases, milestones, or features are typically good task boundaries
+3. Look for natural parallelization boundaries:
+   - Different phases (Phase 1, Phase 2, etc.) are usually separate tasks
+   - Different features or components that don't depend on each other
+   - Different bug fixes that affect unrelated code
+4. Extract a short title (max 60 chars) and include ALL related steps in the description
+5. Number them starting from 1
+
+Examples of WRONG splitting:
+- "Create UserService class" and "Add methods to UserService" → Should be ONE task
+- "Add config entry" and "Use config entry in code" → Should be ONE task
+
+Examples of CORRECT splitting:
+- "Phase 3: Stopwords" and "Phase 4: Splitting" → TWO separate tasks (independent phases)
+- "Fix login bug" and "Add export feature" → TWO separate tasks (unrelated work)
 
 Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
-{"tasks": [{"number": 1, "title": "Short task title", "description": "Full task description..."}, ...]}
+{"tasks": [{"number": 1, "title": "Short task title", "description": "Full task description with all sub-steps..."}, ...]}
 
 If no distinct tasks are found, respond with: {"tasks": []}`, content)
 
