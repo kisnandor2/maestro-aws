@@ -1003,17 +1003,31 @@ func (mp *MultiProgress) render() {
 		return
 	}
 
+	// Count active items (skip "waiting" - they haven't started yet)
+	activeCount := 0
+	for _, name := range mp.order {
+		if mp.items[name].Status != "waiting" {
+			activeCount++
+		}
+	}
+
+	if activeCount == 0 {
+		return
+	}
+
 	// Move cursor up if we've already printed lines
 	if mp.initialized && mp.lineCount > 0 {
 		fmt.Printf("\033[%dA", mp.lineCount)
 	}
 
-	mp.lineCount = len(mp.order)
+	mp.lineCount = activeCount
 	mp.initialized = true
 
 	for _, name := range mp.order {
 		item := mp.items[name]
-		mp.renderLine(item)
+		if item.Status != "waiting" {
+			mp.renderLine(item)
+		}
 	}
 }
 
@@ -1028,7 +1042,9 @@ func (mp *MultiProgress) renderFinal() {
 
 	for _, name := range mp.order {
 		item := mp.items[name]
-		mp.renderLine(item)
+		if item.Status != "waiting" {
+			mp.renderLine(item)
+		}
 	}
 }
 
@@ -1043,8 +1059,6 @@ func (mp *MultiProgress) renderLine(item *ProgressItem) {
 	fmt.Print("\033[K")
 
 	switch item.Status {
-	case "waiting":
-		fmt.Printf("%-40s  Waiting...\n", displayName)
 	case "copying":
 		elapsed := time.Since(item.StartTime).Seconds()
 		if elapsed < 0.1 {
