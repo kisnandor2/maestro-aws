@@ -1133,6 +1133,28 @@ func formatBytes(bytes int64) string {
 	}
 }
 
+// readMaestroIgnore reads exclusion patterns from .maestroignore file
+func readMaestroIgnore(dir string) []string {
+	ignorePath := filepath.Join(dir, ".maestroignore")
+	file, err := os.Open(ignorePath)
+	if err != nil {
+		return nil // No .maestroignore file, that's fine
+	}
+	defer file.Close()
+
+	var patterns []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		patterns = append(patterns, line)
+	}
+	return patterns
+}
+
 func copyProjectToContainer(containerName string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -1155,16 +1177,26 @@ func copyProjectToContainer(containerName string) error {
 
 	startTime := time.Now()
 
+	// Build exclude arguments (defaults + .maestroignore)
+	excludeArgs := []string{"--exclude=node_modules", "--exclude=.git"}
+	for _, pattern := range readMaestroIgnore(cwd) {
+		excludeArgs = append(excludeArgs, "--exclude="+pattern)
+	}
+
 	// Create tar of current directory (excluding .git which is copied separately)
 	var tarCmd *exec.Cmd
 	var dockerCmd *exec.Cmd
 	if useCompression {
 		// Use gzip compression (slower for large projects but smaller transfer)
-		tarCmd = exec.Command("tar", "-czf", "-", "--exclude=node_modules", "--exclude=.git", ".")
+		tarArgs := append([]string{"-czf", "-"}, excludeArgs...)
+		tarArgs = append(tarArgs, ".")
+		tarCmd = exec.Command("tar", tarArgs...)
 		dockerCmd = exec.Command("docker", "exec", "-i", containerName, "tar", "-xzf", "-", "-C", "/workspace")
 	} else {
 		// No compression (faster for large projects on local Docker)
-		tarCmd = exec.Command("tar", "-cf", "-", "--exclude=node_modules", "--exclude=.git", ".")
+		tarArgs := append([]string{"-cf", "-"}, excludeArgs...)
+		tarArgs = append(tarArgs, ".")
+		tarCmd = exec.Command("tar", tarArgs...)
 		dockerCmd = exec.Command("docker", "exec", "-i", containerName, "tar", "-xf", "-", "-C", "/workspace")
 	}
 	tarCmd.Dir = cwd

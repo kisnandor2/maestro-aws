@@ -75,7 +75,10 @@ sync:
   additional_folders:
     - ~/Documents/Code/mcp-servers
     - ~/Documents/Code/helpers
-  compress: true  # Set to false for faster copying of large projects (8GB+)
+  # Compression: gzip the tar stream when copying files to containers
+  # - true (default): smaller transfer, good for remote Docker or slow I/O
+  # - false: faster for large local projects (8GB+), skips compression overhead
+  compress: false
 
 # Git user for commits inside containers
 git:
@@ -159,6 +162,33 @@ For Android/mobile development, mount your host Android SDK into containers:
 1. Set `android.sdk_path` to your SDK location (e.g., `~/Android/Sdk`)
 2. The SDK will be mounted read-only at `/opt/android-sdk` inside containers
 3. Environment variables (`ANDROID_HOME`, `ANDROID_SDK_ROOT`) are automatically configured
+
+#### Project-Level Exclusions (.maestroignore)
+
+Create a `.maestroignore` file in your project root to exclude files/directories when copying to containers. This is useful for large projects with build artifacts that shouldn't be transferred.
+
+```bash
+# .maestroignore - exclude patterns (like .gitignore)
+# Comments start with #
+
+# Android/Gradle build artifacts
+build
+.gradle
+.idea
+.cxx
+.kotlin
+
+# Other common exclusions
+dist
+target
+__pycache__
+*.log
+```
+
+**Notes:**
+- `node_modules` and `.git` are always excluded by default
+- Each line is passed to `tar --exclude=`
+- Empty lines and lines starting with `#` are ignored
 
 ### 3. Create Your First Container
 
