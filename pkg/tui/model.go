@@ -348,7 +348,7 @@ func NewWithCache(containerPrefix string, cached *CachedState) *Model {
 	} else {
 		// Normal mode: If we have cached state, initialize with it for instant render
 		if cached != nil && len(cached.Containers) > 0 {
-			m.homeView = views.NewHomeModel(cached.Containers, false)
+			m.homeView = views.NewHomeModel(cached.Containers, false, viper.GetBool("bedrock.enabled"))
 			m.ready = true // Skip "Loading..."
 			m.cachedCursorPos = cached.CursorPos
 		} else {
@@ -725,7 +725,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Initialize home view with loaded data
-		m.homeView = views.NewHomeModel(msg.containers, false)
+		m.homeView = views.NewHomeModel(msg.containers, false, viper.GetBool("bedrock.enabled"))
 		if m.width > 0 && m.height > 0 {
 			// Subtract 9 lines: title banner (6) + help (1) + blank line (1) + statusbar (1)
 			m.homeView.SetSize(m.width, m.height-9)

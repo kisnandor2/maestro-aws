@@ -62,10 +62,12 @@ type Config struct {
 
 	Sync struct {
 		AdditionalFolders []string `mapstructure:"additional_folders"`
+		Compress          *bool    `mapstructure:"compress"` // Use gzip compression when copying (default: true)
 	} `mapstructure:"sync"`
 
 	SSH struct {
-		Enabled bool `mapstructure:"enabled"`
+		Enabled        bool   `mapstructure:"enabled"`
+		KnownHostsPath string `mapstructure:"known_hosts_path"`
 	} `mapstructure:"ssh"`
 
 	SSL struct {
@@ -84,6 +86,7 @@ type Config struct {
 	GitHub struct {
 		Enabled    bool   `mapstructure:"enabled"`
 		ConfigPath string `mapstructure:"config_path"`
+		Hostname   string `mapstructure:"hostname"` // For GitHub Enterprise (e.g., git.int.avast.com)
 	} `mapstructure:"github"`
 
 	AWS struct {
@@ -320,6 +323,7 @@ func initConfig() {
 	viper.SetDefault("firewall.internal_dns", "")
 	viper.SetDefault("firewall.internal_domains", []string{})
 	viper.SetDefault("ssh.enabled", false)
+	viper.SetDefault("ssh.known_hosts_path", "~/.ssh/known_hosts")
 	viper.SetDefault("ssl.certificates_path", paths.CertificatesDir())
 	viper.SetDefault("android.sdk_path", "")
 	viper.SetDefault("git.user_name", "")
