@@ -62,6 +62,7 @@ type Config struct {
 
 	Sync struct {
 		AdditionalFolders []string `mapstructure:"additional_folders"`
+		Compress          *bool    `mapstructure:"compress"` // Use gzip compression when copying (default: true)
 	} `mapstructure:"sync"`
 
 	SSH struct {

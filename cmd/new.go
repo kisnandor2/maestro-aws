@@ -19,18 +19,20 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/uprockcom/maestro/assets"
 	"github.com/uprockcom/maestro/pkg/container"
 	"github.com/uprockcom/maestro/pkg/version"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -879,40 +881,337 @@ PROMPT_EOF`)
 	return nil
 }
 
+// MultiProgress manages a multi-line progress display (like docker pull)
+type MultiProgress struct {
+	mu          sync.Mutex
+	items       map[string]*ProgressItem
+	order       []string // Track order of items
+	lineCount   int
+	initialized bool
+	done        chan bool
+}
+
+type ProgressItem struct {
+	Name      string
+	Status    string // "waiting", "copying", "done", "error"
+	BytesRead int64
+	TotalSize int64
+	StartTime time.Time
+	EndTime   time.Time
+}
+
+var globalProgress *MultiProgress
+
+// InitMultiProgress initializes the global multi-progress display
+func InitMultiProgress() *MultiProgress {
+	globalProgress = &MultiProgress{
+		items: make(map[string]*ProgressItem),
+		done:  make(chan bool),
+	}
+	return globalProgress
+}
+
+// GetMultiProgress returns the global progress display
+func GetMultiProgress() *MultiProgress {
+	return globalProgress
+}
+
+// AddItem adds a new item to track
+func (mp *MultiProgress) AddItem(name string, totalSize int64) {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+
+	mp.items[name] = &ProgressItem{
+		Name:      name,
+		Status:    "waiting",
+		TotalSize: totalSize,
+	}
+	mp.order = append(mp.order, name)
+}
+
+// StartItem marks an item as started
+func (mp *MultiProgress) StartItem(name string) {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+
+	if item, ok := mp.items[name]; ok {
+		item.Status = "copying"
+		item.StartTime = time.Now()
+	}
+}
+
+// UpdateItem updates bytes read for an item
+func (mp *MultiProgress) UpdateItem(name string, bytesRead int64) {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+
+	if item, ok := mp.items[name]; ok {
+		item.BytesRead = bytesRead
+	}
+}
+
+// CompleteItem marks an item as done
+func (mp *MultiProgress) CompleteItem(name string) {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+
+	if item, ok := mp.items[name]; ok {
+		item.Status = "done"
+		item.EndTime = time.Now()
+	}
+}
+
+// ErrorItem marks an item as failed
+func (mp *MultiProgress) ErrorItem(name string, err error) {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+
+	if item, ok := mp.items[name]; ok {
+		item.Status = "error"
+		item.EndTime = time.Now()
+	}
+}
+
+// Start begins the progress display loop
+func (mp *MultiProgress) Start() {
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-mp.done:
+				return
+			case <-ticker.C:
+				mp.render()
+			}
+		}
+	}()
+}
+
+// Stop stops the progress display and renders final state
+func (mp *MultiProgress) Stop() {
+	close(mp.done)
+	mp.renderFinal()
+}
+
+func (mp *MultiProgress) render() {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+
+	if len(mp.items) == 0 {
+		return
+	}
+
+	// Move cursor up if we've already printed lines
+	if mp.initialized && mp.lineCount > 0 {
+		fmt.Printf("\033[%dA", mp.lineCount)
+	}
+
+	mp.lineCount = len(mp.order)
+	mp.initialized = true
+
+	for _, name := range mp.order {
+		item := mp.items[name]
+		mp.renderLine(item)
+	}
+}
+
+func (mp *MultiProgress) renderFinal() {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+
+	// Move cursor up to overwrite progress lines
+	if mp.initialized && mp.lineCount > 0 {
+		fmt.Printf("\033[%dA", mp.lineCount)
+	}
+
+	for _, name := range mp.order {
+		item := mp.items[name]
+		mp.renderLine(item)
+	}
+}
+
+func (mp *MultiProgress) renderLine(item *ProgressItem) {
+	// Truncate name if too long
+	displayName := item.Name
+	if len(displayName) > 40 {
+		displayName = displayName[:37] + "..."
+	}
+
+	// Clear line
+	fmt.Print("\033[K")
+
+	switch item.Status {
+	case "waiting":
+		fmt.Printf("%-40s  Waiting...\n", displayName)
+	case "copying":
+		elapsed := time.Since(item.StartTime).Seconds()
+		if elapsed < 0.1 {
+			elapsed = 0.1
+		}
+		speed := float64(item.BytesRead) / elapsed / 1024 / 1024
+
+		if item.TotalSize > 0 {
+			pct := float64(item.BytesRead) / float64(item.TotalSize) * 100
+			if pct > 100 {
+				pct = 100
+			}
+			barWidth := 20
+			filled := int(pct / 100 * float64(barWidth))
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+			fmt.Printf("%-40s  [%s] %5.1f%% %6.1f MB/s\n", displayName, bar, pct, speed)
+		} else {
+			fmt.Printf("%-40s  %8s  %6.1f MB/s\n", displayName, formatBytes(item.BytesRead), speed)
+		}
+	case "done":
+		duration := item.EndTime.Sub(item.StartTime).Seconds()
+		speed := float64(item.BytesRead) / duration / 1024 / 1024
+		fmt.Printf("%-40s  ✓ %s in %.1fs (%.1f MB/s)\n", displayName, formatBytes(item.BytesRead), duration, speed)
+	case "error":
+		fmt.Printf("%-40s  ✗ Failed\n", displayName)
+	}
+}
+
+// progressReader wraps an io.Reader to track bytes and report to MultiProgress
+type progressReader struct {
+	reader        io.Reader
+	containerName string
+	bytesRead     int64
+	mu            sync.Mutex
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+	n, err := pr.reader.Read(p)
+	pr.mu.Lock()
+	pr.bytesRead += int64(n)
+	bytes := pr.bytesRead
+	pr.mu.Unlock()
+
+	// Report to global progress if active
+	if mp := GetMultiProgress(); mp != nil {
+		mp.UpdateItem(pr.containerName, bytes)
+	}
+	return n, err
+}
+
+func (pr *progressReader) getBytesRead() int64 {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+	return pr.bytesRead
+}
+
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/GB)
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/MB)
+	case bytes >= KB:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/KB)
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
 func copyProjectToContainer(containerName string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
 
-	// Create tar of current directory (excluding .git if it's huge)
-	tarCmd := exec.Command("tar", "-czf", "-", "--exclude=node_modules", "--exclude=.git", ".")
+	// Determine compression setting (default: true for backward compatibility)
+	useCompression := config.Sync.Compress == nil || *config.Sync.Compress
+
+	// Check if we're in batch mode (MultiProgress active)
+	mp := GetMultiProgress()
+	isBatchMode := mp != nil
+
+	// Signal start to MultiProgress
+	if isBatchMode {
+		mp.StartItem(containerName)
+	} else {
+		fmt.Printf("Copying source code to %s...\n", containerName)
+	}
+
+	startTime := time.Now()
+
+	// Create tar of current directory (excluding .git which is copied separately)
+	var tarCmd *exec.Cmd
+	var dockerCmd *exec.Cmd
+	if useCompression {
+		// Use gzip compression (slower for large projects but smaller transfer)
+		tarCmd = exec.Command("tar", "-czf", "-", "--exclude=node_modules", "--exclude=.git", ".")
+		dockerCmd = exec.Command("docker", "exec", "-i", containerName, "tar", "-xzf", "-", "-C", "/workspace")
+	} else {
+		// No compression (faster for large projects on local Docker)
+		tarCmd = exec.Command("tar", "-cf", "-", "--exclude=node_modules", "--exclude=.git", ".")
+		dockerCmd = exec.Command("docker", "exec", "-i", containerName, "tar", "-xf", "-", "-C", "/workspace")
+	}
 	tarCmd.Dir = cwd
 
-	// Pipe to docker cp
-	dockerCmd := exec.Command("docker", "exec", "-i", containerName, "tar", "-xzf", "-", "-C", "/workspace")
-
-	// Connect pipes
+	// Connect pipes with progress tracking
 	pipe, err := tarCmd.StdoutPipe()
 	if err != nil {
+		if isBatchMode {
+			mp.ErrorItem(containerName, err)
+		}
 		return err
 	}
-	dockerCmd.Stdin = pipe
+
+	// Create progress reader
+	pr := &progressReader{
+		reader:        pipe,
+		containerName: containerName,
+	}
+	dockerCmd.Stdin = pr
 
 	// Start both commands
 	if err := tarCmd.Start(); err != nil {
+		if isBatchMode {
+			mp.ErrorItem(containerName, err)
+		}
 		return err
 	}
 	if err := dockerCmd.Start(); err != nil {
+		if isBatchMode {
+			mp.ErrorItem(containerName, err)
+		}
 		return err
 	}
 
 	// Wait for completion
-	if err := tarCmd.Wait(); err != nil {
-		return err
+	tarErr := tarCmd.Wait()
+	dockerErr := dockerCmd.Wait()
+
+	bytesRead := pr.getBytesRead()
+	duration := time.Since(startTime)
+
+	if tarErr != nil {
+		if isBatchMode {
+			mp.ErrorItem(containerName, tarErr)
+		}
+		return tarErr
 	}
-	if err := dockerCmd.Wait(); err != nil {
-		return err
+	if dockerErr != nil {
+		if isBatchMode {
+			mp.ErrorItem(containerName, dockerErr)
+		}
+		return dockerErr
+	}
+
+	// Update final bytes and mark complete
+	if isBatchMode {
+		mp.UpdateItem(containerName, bytesRead)
+		mp.CompleteItem(containerName)
+	} else {
+		speed := float64(bytesRead) / duration.Seconds() / 1024 / 1024
+		fmt.Printf("  Copied %s in %.1fs (%.1f MB/s)\n", formatBytes(bytesRead), duration.Seconds(), speed)
 	}
 
 	// Copy .git separately if it exists

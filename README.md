@@ -75,6 +75,7 @@ sync:
   additional_folders:
     - ~/Documents/Code/mcp-servers
     - ~/Documents/Code/helpers
+  compress: true  # Set to false for faster copying of large projects (8GB+)
 
 # Git user for commits inside containers
 git:

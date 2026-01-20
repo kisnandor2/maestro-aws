@@ -264,24 +264,27 @@ func createContainersInParallel(tasks []Task, fullMarkdown string, extraCmd stri
 	var createdContainers []string
 	var mu sync.Mutex
 
+	// Initialize multi-progress display for copy operations
+	mp := InitMultiProgress()
+
+	// Pre-generate container names so we can add them to progress display
+	type taskInfo struct {
+		task          Task
+		containerName string
+		branchName    string
+		fullPrompt    string
+	}
+	var taskInfos []taskInfo
+
+	fmt.Println("Preparing containers...")
 	for _, task := range tasks {
-		wg.Add(1)
-		go func(t Task) {
-			defer wg.Done()
+		taskDescription := task.Description
+		if taskDescription == "" {
+			taskDescription = task.Title
+		}
 
-			result := ContainerResult{
-				TaskNumber: t.Number,
-				TaskTitle:  t.Title,
-			}
-
-			// Build the task description with full context
-			taskDescription := t.Description
-			if taskDescription == "" {
-				taskDescription = t.Title
-			}
-
-			// Build the full prompt with markdown as reference
-			fullPrompt := fmt.Sprintf(`You are working on Task %d: %s
+		// Build the full prompt with markdown as reference
+		fullPrompt := fmt.Sprintf(`You are working on Task %d: %s
 
 YOUR SPECIFIC TASK:
 %s
@@ -292,41 +295,59 @@ FULL DOCUMENT FOR REFERENCE:
 ---
 
 Focus ONLY on your assigned task above. The document is provided for context only.`,
-				t.Number, t.Title, taskDescription, fullMarkdown)
+			task.Number, task.Title, taskDescription, fullMarkdown)
 
-			// Append extra command if provided
-			if extraCmd != "" {
-				fullPrompt += fmt.Sprintf(`
+		// Append extra command if provided
+		if extraCmd != "" {
+			fullPrompt += fmt.Sprintf(`
 
 ADDITIONAL INSTRUCTION (execute after completing the task above):
 %s`, extraCmd)
+		}
+
+		// Generate branch name from the specific task
+		branchName, _, err := generateBranchAndPrompt(taskDescription, false)
+		if err != nil {
+			return fmt.Errorf("failed to generate branch for task %d: %w", task.Number, err)
+		}
+
+		if !isValidBranchName(branchName) {
+			branchName = generateSimpleBranch(task.Title)
+		}
+
+		containerName, err := getNextContainerName(branchName)
+		if err != nil {
+			return fmt.Errorf("failed to get container name for task %d: %w", task.Number, err)
+		}
+
+		taskInfos = append(taskInfos, taskInfo{
+			task:          task,
+			containerName: containerName,
+			branchName:    branchName,
+			fullPrompt:    fullPrompt,
+		})
+
+		// Add to progress display
+		mp.AddItem(containerName, 0)
+	}
+
+	// Start progress display
+	fmt.Println("\nCopying source code to containers:")
+	mp.Start()
+
+	// Start container creation in parallel
+	for _, ti := range taskInfos {
+		wg.Add(1)
+		go func(info taskInfo) {
+			defer wg.Done()
+
+			result := ContainerResult{
+				TaskNumber: info.task.Number,
+				TaskTitle:  info.task.Title,
 			}
 
-			// Generate branch name from the specific task (not the full prompt)
-			branchName, _, err := generateBranchAndPrompt(taskDescription, false)
-			if err != nil {
-				result.Success = false
-				result.Message = fmt.Sprintf("failed to generate branch: %v", err)
-				results <- result
-				return
-			}
-
-			// Validate branch name
-			if !isValidBranchName(branchName) {
-				branchName = generateSimpleBranch(t.Title)
-			}
-
-			// Get container name
-			containerName, err := getNextContainerName(branchName)
-			if err != nil {
-				result.Success = false
-				result.Message = fmt.Sprintf("failed to get container name: %v", err)
-				results <- result
-				return
-			}
-
-			// Create the container (simplified version without auto-connect)
-			if err := createBatchContainer(containerName, branchName, fullPrompt); err != nil {
+			// Create the container
+			if err := createBatchContainer(info.containerName, info.branchName, info.fullPrompt); err != nil {
 				result.Success = false
 				result.Message = fmt.Sprintf("failed to create container: %v", err)
 				results <- result
@@ -334,13 +355,13 @@ ADDITIONAL INSTRUCTION (execute after completing the task above):
 			}
 
 			mu.Lock()
-			createdContainers = append(createdContainers, containerName)
+			createdContainers = append(createdContainers, info.containerName)
 			mu.Unlock()
 
 			result.Success = true
-			result.Message = containerName
+			result.Message = info.containerName
 			results <- result
-		}(task)
+		}(ti)
 	}
 
 	// Wait for all to complete
@@ -349,14 +370,24 @@ ADDITIONAL INSTRUCTION (execute after completing the task above):
 		close(results)
 	}()
 
-	// Print results as they come in
-	successCount := 0
+	// Collect results (don't print yet, progress display is active)
+	var resultsList []ContainerResult
 	for result := range results {
+		resultsList = append(resultsList, result)
+	}
+
+	// Stop progress display
+	mp.Stop()
+
+	// Print final summary
+	fmt.Println("\nContainer creation results:")
+	successCount := 0
+	for _, result := range resultsList {
 		if result.Success {
-			fmt.Printf("  [%d] %s\n", result.TaskNumber, result.Message)
+			fmt.Printf("  [%d] ✓ %s\n", result.TaskNumber, result.Message)
 			successCount++
 		} else {
-			fmt.Printf("  [%d] %s\n", result.TaskNumber, result.Message)
+			fmt.Printf("  [%d] ✗ %s\n", result.TaskNumber, result.Message)
 		}
 	}
 
